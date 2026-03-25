@@ -234,15 +234,32 @@
 
         menuToggle.addEventListener('click', () => body.classList.toggle('sidebar-hidden'));
 
+        // 画像プロキシを利用して読み込む関数
+        function getProxiedImageUrl(originalUrl) {
+            if (!originalUrl) return '';
+            // すでにプロキシURLの場合はそのまま
+            if (originalUrl.startsWith('/api/proxy/image')) return originalUrl;
+            return `/api/proxy/image?url=${encodeURIComponent(originalUrl)}`;
+        }
+
         // 指定されたトレンドデータの取得
         async function loadTrending() {
             videoGrid.innerHTML = '<p style="padding: 20px;">トレンドを読み込み中...</p>';
             try {
+                // まずGitHubのトレンドを試す
                 const response = await fetch('https://raw.githubusercontent.com/siawaseok3/wakame/refs/heads/master/trend.json');
+                if (!response.ok) throw new Error();
                 const data = await response.json();
                 renderVideos(data);
             } catch (e) {
-                videoGrid.innerHTML = '<p style="padding: 20px;">トレンドの読み込みに失敗しました。</p>';
+                // 失敗したらサーバーサイドのトレンドAPIを試す
+                try {
+                    const response = await fetch('/api/trending');
+                    const data = await response.json();
+                    renderVideos(data);
+                } catch (err) {
+                    videoGrid.innerHTML = '<p style="padding: 20px;">トレンドの読み込みに失敗しました。</p>';
+                }
             }
         }
 
@@ -251,9 +268,9 @@
             videoGrid.innerHTML = '';
             data.forEach(video => {
                 // サムネイルの取得
-                const videoThumb = video.videoThumbnails ? video.videoThumbnails[0].url : '';
+                const videoThumb = video.videoThumbnails ? video.videoThumbnails[0].url : (video.thumbnail || '');
                 
-                // チャンネルアイコンの取得 (authorThumbnails配列から探す)
+                // チャンネルアイコンの取得
                 let channelThumb = '';
                 if (video.authorThumbnails && video.authorThumbnails.length > 0) {
                     channelThumb = video.authorThumbnails[0].url;
@@ -263,18 +280,39 @@
 
                 const card = document.createElement('div');
                 card.className = 'video-card';
+                
+                // 初回はそのままのURLで試し、エラー時にプロキシURLに差し替える処理
                 card.innerHTML = `
-                    <div class="thumbnail" style="background-image: url('${videoThumb}')"></div>
+                    <div class="thumbnail" id="thumb-${video.videoId}" style="background-image: url('${videoThumb}')"></div>
                     <div class="video-info">
-                        <div class="channel-icon" style="background-image: url('${channelThumb}'); background-color: #ccc;"></div>
+                        <div class="channel-icon" id="icon-${video.videoId}" style="background-image: url('${channelThumb}'); background-color: #ccc;"></div>
                         <div class="text-info">
                             <h3>${video.title}</h3>
                             <p>${video.author}</p>
-                            <p>${video.viewCountText || ''} • ${video.publishedText || ''}</p>
+                            <p>${video.viewCountText || ''} ${video.publishedText ? '• ' + video.publishedText : ''}</p>
                         </div>
                     </div>
                 `;
-                card.onclick = () => window.open(`https://www.youtube.com/watch?v=${video.videoId}`, '_blank');
+
+                // 画像読み込みエラー対策
+                const thumbDiv = card.querySelector(`#thumb-${video.videoId}`);
+                const imgCheck = new Image();
+                imgCheck.src = videoThumb;
+                imgCheck.onerror = () => {
+                    thumbDiv.style.backgroundImage = `url('${getProxiedImageUrl(videoThumb)}')`;
+                };
+
+                const iconDiv = card.querySelector(`#icon-${video.videoId}`);
+                const iconCheck = new Image();
+                iconCheck.src = channelThumb;
+                iconCheck.onerror = () => {
+                    iconDiv.style.backgroundImage = `url('${getProxiedImageUrl(channelThumb)}')`;
+                };
+
+                // watch.html に遷移するように変更
+                card.onclick = () => {
+                    window.location.href = `watch.html?v=${video.videoId}`;
+                };
                 videoGrid.appendChild(card);
             });
         }

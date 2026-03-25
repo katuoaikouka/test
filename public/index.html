@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+    <style>
+        /* 基本設定 */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: "Roboto", Arial, sans-serif; background-color: #ffffff; color: #0f0f0f; }
+
+        /* --- ヘッダー --- */
+        header {
+            position: fixed; top: 0; width: 100%; height: 56px;
+            background: white; display: flex; align-items: center;
+            justify-content: space-between; padding: 0 16px; z-index: 100;
+        }
+        
+        .header-left { display: flex; align-items: center; }
+        .menu-icon { 
+            padding: 8px; cursor: pointer; border-radius: 50%; 
+            margin-right: 16px; display: flex; align-items: center;
+        }
+        .menu-icon:hover { background-color: #e5e5e5; }
+        
+        /* YouTubeロゴの再現 (SVG) */
+        .logo-container { display: flex; align-items: center; cursor: pointer; position: relative; }
+        .logo-svg { width: 90px; height: 20px; }
+
+        .header-center { display: flex; align-items: center; flex: 0 1 720px; position: relative; }
+        .search-container { display: flex; flex: 1; margin-left: 40px; position: relative; }
+        
+        .search-bar {
+            display: flex; flex: 1; border: 1px solid #ccc;
+            border-radius: 40px 0 0 40px; overflow: hidden;
+            margin-left: 16px; padding-left: 16px; align-items: center;
+        }
+        .search-bar:focus-within { border: 1px solid #1c62b9; margin-left: 15px; }
+        .search-bar input {
+            width: 100%; border: none; outline: none; font-size: 16px; height: 38px;
+        }
+        
+        .search-btn {
+            width: 64px; height: 40px; background-color: #f8f8f8;
+            border: 1px solid #ccc; border-left: none;
+            border-radius: 0 40px 40px 0; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .search-btn:hover { background-color: #f0f0f0; }
+
+        .mic-btn {
+            width: 40px; height: 40px; border-radius: 50%; border: none;
+            margin-left: 8px; background-color: #f9f9f9; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .mic-btn:hover { background-color: #e5e5e5; }
+
+        /* --- 予測変換ボックス (追加) --- */
+        #search-suggestions {
+            position: absolute; top: 42px; left: 16px; right: 64px;
+            background: white; border-radius: 12px; border: 1px solid #ccc;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2); display: none;
+            padding: 12px 0; z-index: 1000; list-style: none;
+        }
+        .suggestion-item {
+            padding: 6px 20px; cursor: pointer; display: flex; align-items: center;
+            font-size: 15px; font-weight: 500;
+        }
+        .suggestion-item:hover { background: #eee; }
+        .suggestion-item .material-icons-outlined { margin-right: 15px; color: #606060; }
+
+        .header-right { width: 40px; }
+
+        /* --- サイドバー --- */
+        nav {
+            position: fixed; top: 56px; left: 0; width: 240px; height: 100%;
+            background: white; padding: 12px;
+            transition: transform 0.2s;
+        }
+        .nav-item { 
+            display: flex; align-items: center; padding: 0 12px; 
+            height: 40px; border-radius: 10px; cursor: pointer; list-style: none; 
+            font-size: 14px; margin-bottom: 2px;
+        }
+        .nav-item:hover { background: #f2f2f2; }
+        .nav-item .material-icons-outlined { margin-right: 24px; font-size: 24px; }
+
+        /* --- メインコンテンツ --- */
+        main { 
+            margin-top: 56px; margin-left: 240px; padding: 24px 16px;
+            transition: margin-left 0.2s;
+        }
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+            gap: 16px;
+        }
+
+        .video-card { width: 100%; cursor: pointer; text-decoration: none; color: inherit; }
+        .thumbnail {
+            width: 100%; aspect-ratio: 16 / 9;
+            background-color: #f0f0f0; border-radius: 12px; margin-bottom: 12px;
+            background-size: cover; background-position: center;
+        }
+        .video-info { display: flex; gap: 12px; }
+        .channel-icon {
+            width: 36px; height: 36px; background: #eee; border-radius: 50%; flex-shrink: 0;
+            background-size: cover;
+        }
+        .text-info h3 { font-size: 16px; margin-bottom: 4px; line-height: 1.4; font-weight: 500; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+        .text-info p { font-size: 14px; color: #606060; }
+
+        /* --- 開閉用クラス --- */
+        body.sidebar-hidden nav { transform: translateX(-240px); }
+        body.sidebar-hidden main { margin-left: 0; }
+
+        /* --- 音声検索UI再現 --- */
+        #voice-search-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.9); z-index: 2000;
+            flex-direction: column; align-items: center; justify-content: flex-start;
+            padding-top: 100px;
+        }
+        .voice-header { width: 100%; max-width: 600px; display: flex; justify-content: flex-end; padding: 0 16px; }
+        .close-voice { cursor: pointer; border-radius: 50%; padding: 8px; }
+        .close-voice:hover { background: #eee; }
+        .voice-content { text-align: left; width: 100%; max-width: 540px; margin-top: 20px; }
+        .voice-status { font-size: 24px; color: #0f0f0f; margin-bottom: 40px; min-height: 1.2em; }
+        .voice-mic-container { 
+            position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .voice-mic-btn {
+            width: 68px; height: 68px; background: #ff0000; color: white; border: none;
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1); cursor: pointer;
+        }
+        .voice-mic-btn.listening { animation: pulse 1.5s infinite; }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4); }
+            70% { box-shadow: 0 0 0 20px rgba(255, 0, 0, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+        }
+        .voice-hint { margin-top: 16px; color: #606060; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="header-left">
+            <div class="menu-icon" id="menu-toggle">
+                <span class="material-icons-outlined">menu</span>
+            </div>
+            <div class="logo-container" onclick="location.reload()">
+                <svg class="logo-svg" viewBox="0 0 200 60">
+                    <g transform="scale(0.8)">
+                        <path fill="red" d="M63,14.8c-0.7-2.7-2.8-4.8-5.5-5.5C52.6,8,32.2,8,32.2,8s-20.4,0-25.3,1.3c-2.7,0.7-4.8,2.8-5.5,5.5C0,19.7,0,30,0,30s0,10.3,1.3,15.2c0.7,2.7,2.8,4.8,5.5,5.5C11.8,52,32.2,52,32.2,52s20.4,0,25.3-1.3c2.7-0.7,4.8-2.8,5.5-5.5C64.4,40.3,64.4,30,64.4,30S64.4,19.7,63,14.8z"/>
+                        <polygon fill="white" points="25.8,41.5 42.6,30 25.8,18.5"/>
+                    </g>
+                    <text x="60" y="38" font-family="Arial-BoldMT, Arial" font-weight="bold" font-size="32" letter-spacing="-1">YouTube</text>
+                    <text x="175" y="15" font-family="Arial" font-size="10">JP</text>
+                </svg>
+            </div>
+        </div>
+
+        <div class="header-center">
+            <div class="search-container">
+                <div class="search-bar">
+                    <input type="text" placeholder="検索" id="search-input" autocomplete="off">
+                </div>
+                <button class="search-btn" id="search-button">
+                    <span class="material-icons-outlined">search</span>
+                </button>
+                <ul id="search-suggestions"></ul>
+            </div>
+            <button class="mic-btn" id="voice-search-btn">
+                <span class="material-icons-outlined">mic</span>
+            </button>
+        </div>
+
+        <div class="header-right"></div>
+    </header>
+
+    <nav id="sidebar">
+        <ul>
+            <li class="nav-item">
+                <span class="material-icons-outlined">home</span>
+                ホーム
+            </li>
+            <li class="nav-item">
+                <span class="material-icons-outlined">bolt</span>
+                Shorts
+            </li>
+            <li class="nav-item">
+                <span class="material-icons-outlined">subscriptions</span>
+                登録チャンネル
+            </li>
+            <hr style="margin: 12px 0; border: 0; border-top: 1px solid #eee;">
+            <li class="nav-item">
+                <span class="material-icons-outlined">history</span>
+                履歴
+            </li>
+            <li class="nav-item">
+                <span class="material-icons-outlined">queue_music</span>
+                Music
+            </li>
+        </ul>
+    </nav>
+
+    <main id="main-content">
+        <div class="video-grid" id="video-grid">
+            </div>
+    </main>
+
+    <div id="voice-search-overlay">
+        <div class="voice-header">
+            <span class="material-icons-outlined close-voice" id="close-voice">close</span>
+        </div>
+        <div class="voice-content">
+            <div class="voice-status" id="voice-text">お話しください</div>
+        </div>
+        <div class="voice-mic-container">
+            <button class="voice-mic-btn listening" id="voice-mic-active">
+                <span class="material-icons-outlined" style="font-size: 32px;">mic</span>
+            </button>
+            <div class="voice-hint">マイクを選択してください</div>
+        </div>
+    </div>
+
+    <script>
+        const menuToggle = document.getElementById('menu-toggle');
+        const body = document.body;
+        const searchInput = document.getElementById('search-input');
+        const searchButton = document.getElementById('search-button');
+        const suggestBox = document.getElementById('search-suggestions');
+        const videoGrid = document.getElementById('video-grid');
+
+        // サイドバーの開閉
+        menuToggle.addEventListener('click', () => {
+            body.classList.toggle('sidebar-hidden');
+        });
+
+        // 動画検索関数
+        async function performSearch(query) {
+            if (!query) return;
+            suggestBox.style.display = 'none';
+            videoGrid.innerHTML = '<p style="padding: 20px;">検索中...</p>';
+
+            try {
+                const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+                const videos = await res.json();
+                
+                videoGrid.innerHTML = '';
+                videos.forEach(video => {
+                    const card = document.createElement('div');
+                    card.className = 'video-card';
+                    card.innerHTML = `
+                        <div class="thumbnail" style="background-image: url('${video.videoThumbnails[0].url}')"></div>
+                        <div class="video-info">
+                            <div class="channel-icon" style="background-image: url('${video.authorThumbnail}')"></div>
+                            <div class="text-info">
+                                <h3>${video.title}</h3>
+                                <p>${video.author}</p>
+                                <p>${video.viewCountText} • ${video.publishedText}</p>
+                            </div>
+                        </div>
+                    `;
+                    card.onclick = () => window.open(`https://www.youtube.com/watch?v=${video.videoId}`, '_blank');
+                    videoGrid.appendChild(card);
+                });
+            } catch (e) {
+                videoGrid.innerHTML = '<p>検索エラーが発生しました。</p>';
+            }
+        }
+
+        // 検索ボタンとEnterキー
+        searchButton.addEventListener('click', () => performSearch(searchInput.value));
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') performSearch(searchInput.value);
+        });
+
+        // 予測変換の取得
+        searchInput.addEventListener('input', async () => {
+            const query = searchInput.value;
+            if (query.length === 0) {
+                suggestBox.style.display = 'none';
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/suggestions?q=${encodeURIComponent(query)}`);
+                const suggestions = await res.json();
+                
+                if (suggestions.length > 0) {
+                    suggestBox.innerHTML = '';
+                    suggestions.forEach(text => {
+                        const li = document.createElement('li');
+                        li.className = 'suggestion-item';
+                        li.innerHTML = `<span class="material-icons-outlined">search</span>${text}`;
+                        li.onclick = () => {
+                            searchInput.value = text;
+                            performSearch(text);
+                        };
+                        suggestBox.appendChild(li);
+                    });
+                    suggestBox.style.display = 'block';
+                } else {
+                    suggestBox.style.display = 'none';
+                }
+            } catch (e) {}
+        });
+
+        // ボックス外クリックでサジェストを閉じる
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-container')) suggestBox.style.display = 'none';
+        });
+
+        // --- 音声検索ロジック ---
+        const voiceSearchBtn = document.getElementById('voice-search-btn');
+        const voiceOverlay = document.getElementById('voice-search-overlay');
+        const closeVoice = document.getElementById('close-voice');
+        const voiceText = document.getElementById('voice-text');
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'ja-JP';
+            recognition.interimResults = true;
+
+            voiceSearchBtn.addEventListener('click', () => {
+                voiceOverlay.style.display = 'flex';
+                voiceText.innerText = 'お話しください';
+                recognition.start();
+            });
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                voiceText.innerText = transcript;
+                if (event.results[0].isFinal) {
+                    searchInput.value = transcript;
+                    setTimeout(() => {
+                        voiceOverlay.style.display = 'none';
+                        performSearch(transcript);
+                    }, 1000);
+                }
+            };
+
+            recognition.onerror = () => {
+                voiceText.innerText = '聞き取れませんでした';
+                setTimeout(() => voiceOverlay.style.display = 'none', 1500);
+            };
+
+            closeVoice.addEventListener('click', () => {
+                recognition.stop();
+                voiceOverlay.style.display = 'none';
+            });
+        }
+    </script>
+</body>
+</html>

@@ -3,7 +3,6 @@ const axios = require('axios');
 const path = require('path');
 const app = express();
 
-// --- 設定: 利用するInvidiousインスタンスのリスト ---
 const INVIDIOUS_INSTANCES = [
     'https://yt.omada.cafe',
     'https://invidious.f5.si',
@@ -16,7 +15,7 @@ app.use(express.static('public'));
 
 /**
  * 画像プロキシAPI
- * YouTubeのサムネイルやチャンネルアイコンがブロックされている場合、サーバー経由で取得します。
+ * ytimg.com 等がブロックされている場合、サーバー経由で取得
  */
 app.get('/api/proxy/image', async (req, res) => {
     const imageUrl = req.query.url;
@@ -62,39 +61,25 @@ app.get('/api/search', async (req, res) => {
     const query = req.query.q;
     if (!query) return res.status(400).json({ error: '検索キーワードが必要です' });
 
-    console.log(`検索実行中: ${query}`);
-
     for (const instance of INVIDIOUS_INSTANCES) {
         try {
-            console.log(`試行中のサーバー: ${instance}`);
             const response = await axios.get(`${instance}/api/v1/search`, {
-                params: { 
-                    q: query, 
-                    type: 'video', 
-                    region: 'JP', 
-                    hl: 'ja' 
-                },
+                params: { q: query, type: 'video', region: 'JP', hl: 'ja' },
                 timeout: 6000
             });
-
             if (response.data && Array.isArray(response.data)) {
-                console.log(`成功: ${instance}`);
                 return res.json(response.data);
             }
         } catch (error) {
-            console.warn(`失敗 (${instance}): ${error.message}`);
             continue;
         }
     }
-
-    res.status(500).json({ 
-        error: 'Search failed', 
-        message: '現在、利用可能なYouTubeサーバーが見つかりません。' 
-    });
+    res.status(500).json({ error: 'Search failed' });
 });
 
 /**
- * 予測変換API (Google Suggest API)
+ * 予測変換API (文字化け修正版)
+ * client=firefoxを指定することでJSON形式で取得し、エンコーディングの問題を回避します
  */
 app.get('/api/suggestions', async (req, res) => {
     try {
@@ -102,31 +87,31 @@ app.get('/api/suggestions', async (req, res) => {
         if (!query) return res.json([]);
 
         const response = await axios.get(`https://suggestqueries.google.com/complete/search`, {
-            params: { client: 'youtube', ds: 'yt', q: query, hl: 'ja' },
-            responseType: 'arraybuffer'
+            params: { 
+                client: 'firefox', // JSON配列を直接返すモード
+                ds: 'yt', 
+                q: query, 
+                hl: 'ja' 
+            },
+            timeout: 3000
         });
 
-        const decoder = new TextDecoder('utf-8');
-        const decodedData = decoder.decode(response.data);
-
-        const jsonStrMatch = decodedData.match(/\((.*)\)/);
-        if (!jsonStrMatch) return res.json([]);
-        
-        const data = JSON.parse(jsonStrMatch[1]);
-        const suggestions = data[1].map(item => item[0]);
-        res.json(suggestions);
+        // client=firefoxの場合 [query, [suggestions]] という構造
+        if (response.data && Array.isArray(response.data)) {
+            res.json(response.data[1]);
+        } else {
+            res.json([]);
+        }
     } catch (error) {
         console.error("予測変換エラー:", error.message);
         res.json([]);
     }
 });
 
-// サーバー起動
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`=========================================`);
     console.log(` サーバーが起動しました！`);
     console.log(` URL: http://localhost:${PORT}`);
-    console.log(` 登録サーバー数: ${INVIDIOUS_INSTANCES.length}台`);
     console.log(`=========================================`);
 });

@@ -24,7 +24,6 @@
         }
         .menu-icon:hover { background-color: #e5e5e5; }
         
-        /* YouTubeロゴの再現 (SVG) */
         .logo-container { display: flex; align-items: center; cursor: pointer; position: relative; }
         .logo-svg { width: 90px; height: 20px; }
 
@@ -36,7 +35,7 @@
             border-radius: 40px 0 0 40px; overflow: hidden;
             margin-left: 16px; padding-left: 16px; align-items: center;
         }
-        .search-bar:focus-within { border: 1px solid #1c62b9; margin-left: 15px; }
+        .search-bar:focus-within { border: 1px solid #1c62b9; }
         .search-bar input {
             width: 100%; border: none; outline: none; font-size: 16px; height: 38px;
         }
@@ -56,7 +55,7 @@
         }
         .mic-btn:hover { background-color: #e5e5e5; }
 
-        /* --- 予測変換ボックス (追加) --- */
+        /* --- 予測変換ボックス --- */
         #search-suggestions {
             position: absolute; top: 42px; left: 16px; right: 64px;
             background: white; border-radius: 12px; border: 1px solid #ccc;
@@ -115,7 +114,7 @@
         body.sidebar-hidden nav { transform: translateX(-240px); }
         body.sidebar-hidden main { margin-left: 0; }
 
-        /* --- 音声検索UI再現 --- */
+        /* --- 音声検索UI --- */
         #voice-search-overlay {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(255, 255, 255, 0.9); z-index: 2000;
@@ -142,7 +141,6 @@
             70% { box-shadow: 0 0 0 20px rgba(255, 0, 0, 0); }
             100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
         }
-        .voice-hint { margin-top: 16px; color: #606060; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -209,8 +207,7 @@
     </nav>
 
     <main id="main-content">
-        <div class="video-grid" id="video-grid">
-            </div>
+        <div class="video-grid" id="video-grid"></div>
     </main>
 
     <div id="voice-search-overlay">
@@ -224,7 +221,6 @@
             <button class="voice-mic-btn listening" id="voice-mic-active">
                 <span class="material-icons-outlined" style="font-size: 32px;">mic</span>
             </button>
-            <div class="voice-hint">マイクを選択してください</div>
         </div>
     </div>
 
@@ -236,12 +232,8 @@
         const suggestBox = document.getElementById('search-suggestions');
         const videoGrid = document.getElementById('video-grid');
 
-        // サイドバーの開閉
-        menuToggle.addEventListener('click', () => {
-            body.classList.toggle('sidebar-hidden');
-        });
+        menuToggle.addEventListener('click', () => body.classList.toggle('sidebar-hidden'));
 
-        // 動画検索関数
         async function performSearch(query) {
             if (!query) return;
             suggestBox.style.display = 'none';
@@ -249,20 +241,24 @@
 
             try {
                 const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-                const videos = await res.json();
+                const data = await res.json();
                 
+                if (res.status !== 200) throw new Error(data.message || 'Server error');
+
                 videoGrid.innerHTML = '';
-                videos.forEach(video => {
+                data.forEach(video => {
                     const card = document.createElement('div');
                     card.className = 'video-card';
+                    // サムネイル画像が存在するか確認
+                    const thumb = video.videoThumbnails ? video.videoThumbnails[0].url : '';
                     card.innerHTML = `
-                        <div class="thumbnail" style="background-image: url('${video.videoThumbnails[0].url}')"></div>
+                        <div class="thumbnail" style="background-image: url('${thumb}')"></div>
                         <div class="video-info">
-                            <div class="channel-icon" style="background-image: url('${video.authorThumbnail}')"></div>
+                            <div class="channel-icon" style="background-image: url('${video.authorThumbnail || ''}')"></div>
                             <div class="text-info">
                                 <h3>${video.title}</h3>
                                 <p>${video.author}</p>
-                                <p>${video.viewCountText} • ${video.publishedText}</p>
+                                <p>${video.viewCountText || ''} • ${video.publishedText || ''}</p>
                             </div>
                         </div>
                     `;
@@ -270,53 +266,36 @@
                     videoGrid.appendChild(card);
                 });
             } catch (e) {
-                videoGrid.innerHTML = '<p>検索エラーが発生しました。</p>';
+                videoGrid.innerHTML = `<p style="padding: 20px; color: red;">検索エラー: ${e.message}<br>別の単語で試すか、サーバーのインスタンス設定を確認してください。</p>`;
             }
         }
 
-        // 検索ボタンとEnterキー
         searchButton.addEventListener('click', () => performSearch(searchInput.value));
-        searchInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') performSearch(searchInput.value);
-        });
+        searchInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') performSearch(searchInput.value); });
 
-        // 予測変換の取得
         searchInput.addEventListener('input', async () => {
             const query = searchInput.value;
-            if (query.length === 0) {
-                suggestBox.style.display = 'none';
-                return;
-            }
-
+            if (query.length === 0) { suggestBox.style.display = 'none'; return; }
             try {
                 const res = await fetch(`/api/suggestions?q=${encodeURIComponent(query)}`);
                 const suggestions = await res.json();
-                
                 if (suggestions.length > 0) {
                     suggestBox.innerHTML = '';
                     suggestions.forEach(text => {
                         const li = document.createElement('li');
                         li.className = 'suggestion-item';
                         li.innerHTML = `<span class="material-icons-outlined">search</span>${text}`;
-                        li.onclick = () => {
-                            searchInput.value = text;
-                            performSearch(text);
-                        };
+                        li.onclick = () => { searchInput.value = text; performSearch(text); };
                         suggestBox.appendChild(li);
                     });
                     suggestBox.style.display = 'block';
-                } else {
-                    suggestBox.style.display = 'none';
                 }
             } catch (e) {}
         });
 
-        // ボックス外クリックでサジェストを閉じる
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('.search-container')) suggestBox.style.display = 'none';
-        });
+        document.addEventListener('click', (e) => { if (!e.target.closest('.search-container')) suggestBox.style.display = 'none'; });
 
-        // --- 音声検索ロジック ---
+        // --- 音声検索 (修正版) ---
         const voiceSearchBtn = document.getElementById('voice-search-btn');
         const voiceOverlay = document.getElementById('voice-search-overlay');
         const closeVoice = document.getElementById('close-voice');
@@ -327,12 +306,17 @@
             const recognition = new SpeechRecognition();
             recognition.lang = 'ja-JP';
             recognition.interimResults = true;
+            let isRecognizing = false; // 重複起動防止フラグ
 
             voiceSearchBtn.addEventListener('click', () => {
+                if (isRecognizing) return; 
                 voiceOverlay.style.display = 'flex';
                 voiceText.innerText = 'お話しください';
                 recognition.start();
             });
+
+            recognition.onstart = () => { isRecognizing = true; };
+            recognition.onend = () => { isRecognizing = false; };
 
             recognition.onresult = (event) => {
                 const transcript = event.results[0][0].transcript;
@@ -344,11 +328,6 @@
                         performSearch(transcript);
                     }, 1000);
                 }
-            };
-
-            recognition.onerror = () => {
-                voiceText.innerText = '聞き取れませんでした';
-                setTimeout(() => voiceOverlay.style.display = 'none', 1500);
             };
 
             closeVoice.addEventListener('click', () => {

@@ -119,7 +119,10 @@ app.get('/api/videos/:id', async (req, res) => {
                 params: { region: 'JP', hl: 'ja' },
                 timeout: 5000
             });
-            return res.json(response.data);
+            // 正常なデータが取得できたかチェック
+            if (response.data && response.data.videoId) {
+                return res.json(response.data);
+            }
         } catch (error) {
             continue;
         }

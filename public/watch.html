@@ -110,8 +110,8 @@
             margin-bottom: 12px; flex-wrap: wrap; gap: 12px;
         }
         .owner-left { display: flex; align-items: center; }
-        .owner-icon { width: 40px; height: 40px; background: #eee; border-radius: 50%; margin-right: 12px; flex-shrink: 0; background-size: cover; }
-        .owner-info { margin-right: 24px; }
+        .owner-icon { width: 40px; height: 40px; background: #eee; border-radius: 50%; margin-right: 12px; flex-shrink: 0; background-size: cover; cursor: pointer; }
+        .owner-info { margin-right: 24px; cursor: pointer; }
         .owner-name { font-weight: 500; font-size: 16px; }
         .sub-count { font-size: 12px; color: #606060; }
         
@@ -199,6 +199,11 @@
         .voice-mic-container { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; }
         .voice-mic-btn { width: 68px; height: 68px; background: #ff0000; color: white; border: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.1); cursor: pointer; }
         .voice-mic-btn.listening { animation: pulse 1.5s infinite; }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4); }
+            70% { box-shadow: 0 0 0 20px rgba(255, 0, 0, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+        }
     </style>
 </head>
 <body class="sidebar-hidden">
@@ -259,7 +264,7 @@
             <h1 class="video-title" id="v-title">読み込み中...</h1>
             
             <div class="video-owner-container">
-                <div class="owner-left">
+                <div class="owner-left" id="v-channel-link">
                     <div class="owner-icon" id="v-owner-icon"></div>
                     <div class="owner-info">
                         <div class="owner-name" id="v-author">---</div>
@@ -273,6 +278,8 @@
                         <button class="action-btn" style="border-radius:18px 0 0 18px; border-right:1px solid #ddd;"><span class="material-icons-outlined">thumb_up</span> <span id="v-likes">--</span></button>
                         <button class="action-btn" style="border-radius:0 18px 18px 0; padding:0 12px;"><span class="material-icons-outlined">thumb_down</span></button>
                     </div>
+                    <button class="action-btn" id="stream-btn"><span class="material-icons-outlined">play_arrow</span> ストリーム再生</button>
+                    <button class="action-btn" id="download-btn"><span class="material-icons-outlined">download</span> ダウンロード</button>
                     <button class="action-btn"><span class="material-icons-outlined">share</span> 共有</button>
                     <button class="action-btn"><span class="material-icons-outlined">more_horiz</span></button>
                 </div>
@@ -314,6 +321,7 @@
         const videoId = params.get('v');
         const searchInput = document.getElementById('search-input');
         const suggestBox = document.getElementById('search-suggestions');
+        let currentVideoData = null;
 
         if (!videoId) window.location.href = 'index.html';
 
@@ -328,26 +336,61 @@
             `;
 
             try {
-                // Invidious API経由で動画情報を取得（検索APIを転用して1件目を出す簡易方式）
-                const res = await fetch(`/api/search?q=${videoId}`);
-                const data = await res.json();
-                const video = data.find(v => v.videoId === videoId) || data[0];
+                // watchルート対応: 動画詳細エンドポイントから情報を取得
+                const res = await fetch(`/api/videos/${videoId}`);
+                const video = await res.json();
+                currentVideoData = video;
 
                 if (video) {
                     document.getElementById('v-title').innerText = video.title;
                     document.getElementById('v-author').innerText = video.author;
-                    document.getElementById('v-likes').innerText = video.likeCountText || '4.2万';
+                    document.getElementById('v-likes').innerText = video.likeCountText || '---';
+                    document.getElementById('v-sub-count').innerText = video.subCountText || '非公開';
                     document.getElementById('v-description').innerText = `${video.viewCountText} • ${video.publishedText}\n\n${video.description || '説明はありません。'}`;
+                    document.getElementById('v-comment-count').innerText = `${video.commentCount || 0} 件のコメント`;
                     
                     const iconUrl = video.authorThumbnails ? video.authorThumbnails[0].url : '';
                     const iconDiv = document.getElementById('v-owner-icon');
                     iconDiv.style.backgroundImage = `url('${iconUrl}')`;
                     const img = new Image(); img.src = iconUrl;
                     img.onerror = () => iconDiv.style.backgroundImage = `url('${getProxiedUrl(iconUrl)}')`;
+
+                    // チャンネルページへの遷移設定
+                    document.getElementById('v-channel-link').onclick = () => {
+                        window.location.href = `channel.html?id=${video.authorId}`;
+                    };
                 }
 
                 loadRecommendations();
+                loadComments();
             } catch (e) { console.error(e); }
+        }
+
+        async function loadComments() {
+            try {
+                const res = await fetch(`/api/comments/${videoId}`);
+                const data = await res.json();
+                const list = document.getElementById('comment-list');
+                list.innerHTML = '';
+                
+                const comments = data.comments || [];
+                comments.slice(0, 20).forEach(c => {
+                    const div = document.createElement('div');
+                    div.className = 'comment-item';
+                    div.innerHTML = `
+                        <div class="user-avatar" style="background-image: url('${c.authorThumbnails[0].url}')"></div>
+                        <div class="comment-text-info">
+                            <h5>${c.author} <span>${c.publishedText}</span></h5>
+                            <p>${c.content}</p>
+                            <div class="comment-actions">
+                                <span><span class="material-icons-outlined" style="font-size:18px">thumb_up</span> ${c.likeCount}</span>
+                                <span>返信</span>
+                            </div>
+                        </div>
+                    `;
+                    list.appendChild(div);
+                });
+            } catch (e) {}
         }
 
         async function loadRecommendations() {
@@ -377,6 +420,26 @@
                 });
             } catch (e) {}
         }
+
+        // --- ストリーム/ダウンロード機能 ---
+        document.getElementById('stream-btn').onclick = () => {
+            if (currentVideoData && currentVideoData.formatStreams) {
+                const stream = currentVideoData.formatStreams[0].url;
+                window.open(stream, '_blank');
+            } else {
+                alert("ストリームが見つかりませんでした。");
+            }
+        };
+
+        document.getElementById('download-btn').onclick = () => {
+            if (currentVideoData && currentVideoData.adaptiveFormats) {
+                // 最も高画質な動画（videoのみ）を選択
+                const videoStream = currentVideoData.adaptiveFormats.find(f => f.type.includes('video/mp4'));
+                if (videoStream) window.open(videoStream.url, '_blank');
+            } else {
+                alert("ダウンロードリンクが取得できませんでした。");
+            }
+        };
 
         // --- 共通イベント ---
         document.getElementById('menu-toggle').addEventListener('click', () => document.body.classList.toggle('sidebar-open'));

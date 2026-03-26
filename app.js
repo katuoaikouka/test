@@ -1,3 +1,4 @@
+
 const express = require('express');
 const axios = require('axios');
 const path = require('path');
@@ -106,6 +107,63 @@ app.get('/api/suggestions', async (req, res) => {
         console.error("予測変換エラー:", error.message);
         res.json([]);
     }
+});
+
+/**
+ * 動画詳細・ストリーム情報取得API
+ */
+app.get('/api/videos/:id', async (req, res) => {
+    const videoId = req.params.id;
+    for (const instance of INVIDIOUS_INSTANCES) {
+        try {
+            const response = await axios.get(`${instance}/api/v1/videos/${videoId}`, {
+                params: { region: 'JP', hl: 'ja' },
+                timeout: 5000
+            });
+            return res.json(response.data);
+        } catch (error) {
+            continue;
+        }
+    }
+    res.status(500).json({ error: 'Video info failed' });
+});
+
+/**
+ * コメント取得API
+ */
+app.get('/api/comments/:id', async (req, res) => {
+    const videoId = req.params.id;
+    for (const instance of INVIDIOUS_INSTANCES) {
+        try {
+            const response = await axios.get(`${instance}/api/v1/comments/${videoId}`, {
+                params: { hl: 'ja' },
+                timeout: 5000
+            });
+            return res.json(response.data);
+        } catch (error) {
+            continue;
+        }
+    }
+    res.status(500).json({ error: 'Comments failed' });
+});
+
+/**
+ * チャンネル情報取得API
+ */
+app.get('/api/channels/:id', async (req, res) => {
+    const channelId = req.params.id;
+    for (const instance of INVIDIOUS_INSTANCES) {
+        try {
+            const response = await axios.get(`${instance}/api/v1/channels/${channelId}`, {
+                params: { hl: 'ja' },
+                timeout: 5000
+            });
+            return res.json(response.data);
+        } catch (error) {
+            continue;
+        }
+    }
+    res.status(500).json({ error: 'Channel info failed' });
 });
 
 const PORT = process.env.PORT || 3000;

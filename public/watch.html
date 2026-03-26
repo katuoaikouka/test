@@ -99,7 +99,7 @@
         .video-player-container {
             width: 100%; aspect-ratio: 16 / 9;
             background-color: #000; border-radius: 12px;
-            overflow: hidden; margin-bottom: 12px;
+            overflow: hidden; margin-bottom: 12px; position: relative;
         }
         iframe { width: 100%; height: 100%; border: none; }
 
@@ -204,6 +204,23 @@
             70% { box-shadow: 0 0 0 20px rgba(255, 0, 0, 0); }
             100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
         }
+
+        /* --- カスタムプレイヤー用スタイル --- */
+        #custom-player-ui {
+            width: 100%; height: 100%; position: relative; background: #000; display: none;
+        }
+        #main-video { width: 100%; height: 100%; }
+        .player-controls-overlay {
+            position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(transparent, rgba(0,0,0,0.7));
+            padding: 10px; opacity: 0; transition: opacity 0.3s; color: white; z-index: 10;
+        }
+        #custom-player-ui:hover .player-controls-overlay { opacity: 1; }
+        .settings-panel {
+            position: absolute; bottom: 50px; right: 10px; background: rgba(28, 28, 28, 0.95);
+            border-radius: 8px; padding: 12px; display: none; flex-direction: column; gap: 8px; min-width: 150px;
+        }
+        .settings-panel select { background: #333; color: white; border: 1px solid #555; border-radius: 4px; padding: 4px; font-size: 12px; }
+        .settings-panel label { font-size: 11px; color: #aaa; margin-bottom: -4px; }
     </style>
 </head>
 <body class="sidebar-hidden">
@@ -256,8 +273,33 @@
     <main>
         <div class="primary-content">
             <div class="video-player-container" id="player-wrapper">
-                <div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#fff;">
-                    <p>読み込み中...</p>
+                <div id="iframe-container" style="width:100%; height:100%;">
+                    <div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#fff;">
+                        <p>読み込み中...</p>
+                    </div>
+                </div>
+                <div id="custom-player-ui">
+                    <video id="main-video" controls autoplay></video>
+                    <audio id="sync-audio" style="display:none;"></audio>
+                    <div class="player-controls-overlay">
+                        <button id="settings-toggle" style="background:none; border:none; color:white; cursor:pointer; float:right;">
+                            <span class="material-icons-outlined">settings</span>
+                        </button>
+                        <div class="settings-panel" id="settings-panel">
+                            <label>画質</label>
+                            <select id="quality-select"></select>
+                            <label>再生速度</label>
+                            <select id="speed-select">
+                                <option value="0.25">0.25x</option>
+                                <option value="0.5">0.5x</option>
+                                <option value="0.75">0.75x</option>
+                                <option value="1" selected>1.0x (標準)</option>
+                                <option value="1.25">1.25x</option>
+                                <option value="1.5">1.5x</option>
+                                <option value="2">2.0x</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -323,6 +365,15 @@
         const suggestBox = document.getElementById('search-suggestions');
         let currentVideoData = null;
 
+        // プレイヤー要素
+        const iframeContainer = document.getElementById('iframe-container');
+        const customPlayerUI = document.getElementById('custom-player-ui');
+        const mainVideo = document.getElementById('main-video');
+        const syncAudio = document.getElementById('sync-audio');
+        const qualitySelect = document.getElementById('quality-select');
+        const speedSelect = document.getElementById('speed-select');
+        const settingsPanel = document.getElementById('settings-panel');
+
         if (!videoId) window.location.href = 'index.html';
 
         function getProxiedUrl(url) {
@@ -330,13 +381,12 @@
         }
 
         async function initPage() {
-            // プレイヤー挿入
-            document.getElementById('player-wrapper').innerHTML = `
+            // 初期状態はiframe
+            iframeContainer.innerHTML = `
                 <iframe src="https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1" allowfullscreen allow="autoplay"></iframe>
             `;
 
             try {
-                // watchルート対応: 動画詳細エンドポイントから情報を取得
                 const res = await fetch(`/api/videos/${videoId}`);
                 const video = await res.json();
                 currentVideoData = video;
@@ -355,10 +405,15 @@
                     const img = new Image(); img.src = iconUrl;
                     img.onerror = () => iconDiv.style.backgroundImage = `url('${getProxiedUrl(iconUrl)}')`;
 
-                    // チャンネルページへの遷移設定
                     document.getElementById('v-channel-link').onclick = () => {
                         window.location.href = `channel.html?id=${video.authorId}`;
                     };
+
+                    // 画質リストの生成 (adaptiveFormatsからvideoのみ抽出)
+                    if (video.adaptiveFormats) {
+                        const videoFormats = video.adaptiveFormats.filter(f => f.type.includes('video/webm') || f.type.includes('video/mp4'));
+                        qualitySelect.innerHTML = videoFormats.map(f => `<option value="${f.url}">${f.qualityLabel} (${f.container})</option>`).join('');
+                    }
                 }
 
                 loadRecommendations();
@@ -366,13 +421,65 @@
             } catch (e) { console.error(e); }
         }
 
+        // --- ストリーム同期ロジック ---
+        function startSyncPlayback(videoUrl) {
+            iframeContainer.style.display = 'none';
+            customPlayerUI.style.display = 'block';
+
+            // 音声ストリームの特定
+            const audioStream = currentVideoData.adaptiveFormats.find(f => f.type.includes('audio/webm') || f.type.includes('audio/mp4'));
+            
+            mainVideo.src = videoUrl;
+            if (audioStream) {
+                syncAudio.src = audioStream.url;
+                syncAudio.load();
+            }
+
+            // 同期処理
+            mainVideo.onplay = () => syncAudio.play();
+            mainVideo.onpause = () => syncAudio.pause();
+            mainVideo.onseeking = () => { syncAudio.currentTime = mainVideo.currentTime; };
+            mainVideo.onratechange = () => { syncAudio.playbackRate = mainVideo.playbackRate; };
+
+            mainVideo.play();
+        }
+
+        // ボタンイベント
+        document.getElementById('stream-btn').onclick = () => {
+            if (qualitySelect.value) {
+                startSyncPlayback(qualitySelect.value);
+            } else if (currentVideoData && currentVideoData.formatStreams) {
+                startSyncPlayback(currentVideoData.formatStreams[0].url);
+            } else {
+                alert("再生可能なストリームが見つかりませんでした。");
+            }
+        };
+
+        qualitySelect.onchange = () => {
+            const time = mainVideo.currentTime;
+            mainVideo.src = qualitySelect.value;
+            mainVideo.currentTime = time;
+            mainVideo.play();
+        };
+
+        speedSelect.onchange = () => {
+            mainVideo.playbackRate = parseFloat(speedSelect.value);
+        };
+
+        document.getElementById('settings-toggle').onclick = (e) => {
+            e.stopPropagation();
+            settingsPanel.style.display = settingsPanel.style.display === 'flex' ? 'none' : 'flex';
+        };
+
+        document.addEventListener('click', () => settingsPanel.style.display = 'none');
+        settingsPanel.onclick = (e) => e.stopPropagation();
+
         async function loadComments() {
             try {
                 const res = await fetch(`/api/comments/${videoId}`);
                 const data = await res.json();
                 const list = document.getElementById('comment-list');
                 list.innerHTML = '';
-                
                 const comments = data.comments || [];
                 comments.slice(0, 20).forEach(c => {
                     const div = document.createElement('div');
@@ -421,19 +528,8 @@
             } catch (e) {}
         }
 
-        // --- ストリーム/ダウンロード機能 ---
-        document.getElementById('stream-btn').onclick = () => {
-            if (currentVideoData && currentVideoData.formatStreams) {
-                const stream = currentVideoData.formatStreams[0].url;
-                window.open(stream, '_blank');
-            } else {
-                alert("ストリームが見つかりませんでした。");
-            }
-        };
-
         document.getElementById('download-btn').onclick = () => {
             if (currentVideoData && currentVideoData.adaptiveFormats) {
-                // 最も高画質な動画（videoのみ）を選択
                 const videoStream = currentVideoData.adaptiveFormats.find(f => f.type.includes('video/mp4'));
                 if (videoStream) window.open(videoStream.url, '_blank');
             } else {
@@ -441,7 +537,6 @@
             }
         };
 
-        // --- 共通イベント ---
         document.getElementById('menu-toggle').addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
         document.getElementById('desc-more').addEventListener('click', function() {
             const box = document.getElementById('desc-box');
@@ -449,7 +544,6 @@
             this.innerText = box.classList.contains('expanded') ? '一部を表示' : 'もっと見る';
         });
 
-        // --- 検索/予測変換 ---
         searchInput.addEventListener('input', async () => {
             const q = searchInput.value;
             if (!q) { suggestBox.style.display = 'none'; return; }
@@ -469,12 +563,12 @@
                 }
             } catch (e) {}
         });
+
         document.addEventListener('click', (e) => { if (!e.target.closest('.search-container')) suggestBox.style.display = 'none'; });
         document.getElementById('search-button').onclick = () => {
             if (searchInput.value) window.location.href = `index.html?q=${encodeURIComponent(searchInput.value)}`;
         };
 
-        // --- 音声検索 ---
         const voiceSearchBtn = document.getElementById('voice-search-btn');
         const voiceOverlay = document.getElementById('voice-search-overlay');
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;

@@ -119,29 +119,7 @@ app.get('/api/videos/:id', async (req, res) => {
                 params: { region: 'JP', hl: 'ja' },
                 timeout: 5000
             });
-            
-            const data = response.data;
-
-            // 同期再生用に日本語音声を優先抽出する処理を追加
-            if (data.adaptiveFormats) {
-                // 言語が 'ja' または 'Japanese' の音声ストリームを探す
-                let japaneseAudio = data.adaptiveFormats.find(f => 
-                    f.type.includes('audio') && 
-                    (f.language === 'ja' || (f.audioTrack && f.audioTrack.displayName === 'Japanese'))
-                );
-
-                // 日本語が見つからない場合は通常の音声ストリームを使用
-                if (!japaneseAudio) {
-                    japaneseAudio = data.adaptiveFormats.find(f => f.type.includes('audio'));
-                }
-
-                // クライアント側で見つけやすくするために専用プロパティをセット
-                if (japaneseAudio) {
-                    data.selectedAudioUrl = japaneseAudio.url;
-                }
-            }
-
-            return res.json(data);
+            return res.json(response.data);
         } catch (error) {
             continue;
         }
